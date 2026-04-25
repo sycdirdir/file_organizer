@@ -1,0 +1,37 @@
+# Build
+build/
+dist/
+__pycache__/
+*.spec.bak
+
+# Node
+node_modules/
+package-lock.json
+
+# Temp diagnostic files
+_*.py
+_*.txt
+_diag*.py
+_diag*.txt
+_debug*.py
+_check*.py
+_fix*.py
+_find*.py
+_full_fix.py
+_patch*.py
+_show*.py
+_line*.txt
+_bad_result.txt
+temp_scan_code.py
+pyinstxtractor.py
+
+# IDE
+.vscode/
+.idea/
+
+# macOS
+.DS_Store
+
+# Database files (dynamically generated)
+DB/*.db
+*.db
