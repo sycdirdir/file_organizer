@@ -192,6 +192,7 @@ _LANG["zh"] = {
     "t8_no_sel": "未选择",
     "t8_ready": "可以对比",
     "t8_pick": "请左右各选一条记录",
+    "t8_same_db": "左右选中了相同的数据文件，请重新选择。",
 
     # Tab 3 趋势表头
     "t3_col_month": "月份", "t3_col_files": "文件数", "t3_col_size": "大小(GB)", "t3_col_bar": "趋势图",
@@ -301,6 +302,7 @@ _LANG["en"] = {
     "t8_no_sel": "Not selected",
     "t8_ready": "Ready to compare",
     "t8_pick": "Pick one on each side",
+    "t8_same_db": "Same data file selected on both sides. Please pick different snapshots.",
 
     # Tab 3 Trends columns
     "t3_col_month": "Month", "t3_col_files": "Files", "t3_col_size": "Size(GB)", "t3_col_bar": "Bar Chart",
@@ -407,6 +409,7 @@ _LANG["fr"] = {
     "t8_no_sel": "Non selectionne",
     "t8_ready": "Pret a comparer",
     "t8_pick": "Choisissez un de chaque cote",
+    "t8_same_db": "Même fichier de données sélectionné des deux côtés. Veuillez choisir des instantanés différents.",
 
     # Tab 3 Tendances colonnes
     "t3_col_month": "Mois", "t3_col_files": "Fichiers", "t3_col_size": "Taille(Go)", "t3_col_bar": "Graphique",
@@ -2363,7 +2366,7 @@ class App:
         a_label, a_snap = a_info[0], a_info[1]
         b_label, b_snap = b_info[0], b_info[1]
         if a_label == b_label:
-            messagebox.showwarning(T("dlg_tip"), T("t8_need_two"))
+            messagebox.showwarning(T("dlg_tip"), T("t8_same_db"))
             return
         if not a_snap or not b_snap or not os.path.exists(a_snap) \
                 or not os.path.exists(b_snap):
