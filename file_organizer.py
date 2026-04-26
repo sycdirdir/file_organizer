@@ -1,6 +1,6 @@
 ﻿# -*- coding: utf-8 -*-
-"""File Organizer Pro v1.2 - i18n: 中文 / EN / FR
-Updated: Support for multi-machine deployment (database filenames include hostname)
+"""File Organizer Pro v2.2 - i18n: 中文 / EN / FR
+Updated: Tab 8 independent selection details display (A/B left/right)
 """
 import os, sys, sqlite3, threading, time, math, socket, hashlib
 import tkinter as tk
@@ -12,7 +12,7 @@ from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 plt.rcParams['font.sans-serif'] = ['Microsoft YaHei UI', 'SimHei', 'Arial']
 plt.rcParams['axes.unicode_minus'] = False
 
-VER = "2.0"
+VER = "2.2"
 
 def _get_app_dir():
     """Return the directory where the executable or script resides.
@@ -189,6 +189,9 @@ _LANG["zh"] = {
     "t8_same_size": "相同",
     "t8_new": "新增",
     "t8_removed": "已删除",
+    "t8_no_sel": "未选择",
+    "t8_ready": "可以对比",
+    "t8_pick": "请左右各选一条记录",
 
     # Tab 3 趋势表头
     "t3_col_month": "月份", "t3_col_files": "文件数", "t3_col_size": "大小(GB)", "t3_col_bar": "趋势图",
@@ -295,6 +298,9 @@ _LANG["en"] = {
     "t8_same_size": "Same",
     "t8_new": "New",
     "t8_removed": "Removed",
+    "t8_no_sel": "Not selected",
+    "t8_ready": "Ready to compare",
+    "t8_pick": "Pick one on each side",
 
     # Tab 3 Trends columns
     "t3_col_month": "Month", "t3_col_files": "Files", "t3_col_size": "Size(GB)", "t3_col_bar": "Bar Chart",
@@ -398,6 +404,9 @@ _LANG["fr"] = {
     "t8_same_size": "Identique",
     "t8_new": "Nouveau",
     "t8_removed": "Supprime",
+    "t8_no_sel": "Non selectionne",
+    "t8_ready": "Pret a comparer",
+    "t8_pick": "Choisissez un de chaque cote",
 
     # Tab 3 Tendances colonnes
     "t3_col_month": "Mois", "t3_col_files": "Fichiers", "t3_col_size": "Taille(Go)", "t3_col_bar": "Graphique",
@@ -2043,7 +2052,13 @@ class App:
         self.cmp_a_listbox.pack(side="left", fill="both", expand=True)
         cmp_a_sb.config(command=self.cmp_a_listbox.yview)
         self.cmp_a_listbox.bind("<<ListboxSelect>>",
-                                lambda e: self._on_cmp_list_select("a"))
+                                lambda e: self._on_cmp_a_select())
+        # A 列选中详情标签
+        self.cmp_a_info_lbl = tk.Label(
+            left_col, text="", bg=self.BG2, fg=self.GY,
+            font=("Microsoft YaHei UI", 8), anchor="w", justify="left"
+        )
+        self.cmp_a_info_lbl.pack(fill="x", pady=(4, 0))
 
         # ── 中间列：对比按钮 ─────────────────────────────────────────────
         mid_col = tk.Frame(top_pane, bg=self.BG)
@@ -2089,7 +2104,13 @@ class App:
         self.cmp_b_listbox.pack(side="left", fill="both", expand=True)
         cmp_b_sb.config(command=self.cmp_b_listbox.yview)
         self.cmp_b_listbox.bind("<<ListboxSelect>>",
-                                lambda e: self._on_cmp_list_select("b"))
+                                lambda e: self._on_cmp_b_select())
+        # B 列选中详情标签
+        self.cmp_b_info_lbl = tk.Label(
+            right_col, text="", bg=self.BG2, fg=self.GY,
+            font=("Microsoft YaHei UI", 8), anchor="w", justify="left"
+        )
+        self.cmp_b_info_lbl.pack(fill="x", pady=(4, 0))
 
         # ════════════════════════════════════════════════════════════════════
         # 下半区（70%）：统计摘要 + 结果列表
@@ -2257,38 +2278,67 @@ class App:
         
         return None
 
-    def _on_cmp_list_select(self, which):
-        """Called when user clicks an item in scan A or B listbox."""
-        self._update_cmp_sel_label()
+    def _on_cmp_a_select(self):
+        """左侧列表选中：在列表下方显示选中的数据库信息"""
+        lb = getattr(self, 'cmp_a_listbox', None)
+        if not lb:
+            return
+        sel = lb.curselection()
+        items = getattr(self, '_cmp_scan_items', [])
+        lbl = getattr(self, 'cmp_a_info_lbl', None)
+        if not lbl:
+            return
+        if sel and sel[0] < len(items):
+            info = items[sel[0]]
+            # info: (label, db_path, scan_time, db_mtime, file_count, total_bytes, db_name)
+            try:
+                gb = info[5] / 1024**3 if info[5] else 0
+            except:
+                gb = 0
+            text = ("🕐 {}  |  📄 {:,} files  |  💾 {:.1f} GB\n"
+                    "📁 {}  |  🗓 DB: {}").format(
+                info[2], info[4], gb, info[6], info[3]
+            )
+            lbl.config(text=text, fg=self.YL)
+        else:
+            lbl.config(text=T("t8_no_sel"), fg=self.GY)
+
+    def _on_cmp_b_select(self):
+        """右侧列表选中：在列表下方显示选中的数据库信息"""
+        lb = getattr(self, 'cmp_b_listbox', None)
+        if not lb:
+            return
+        sel = lb.curselection()
+        items = getattr(self, '_cmp_scan_items', [])
+        lbl = getattr(self, 'cmp_b_info_lbl', None)
+        if not lbl:
+            return
+        if sel and sel[0] < len(items):
+            info = items[sel[0]]
+            try:
+                gb = info[5] / 1024**3 if info[5] else 0
+            except:
+                gb = 0
+            text = ("🕐 {}  |  📄 {:,} files  |  💾 {:.1f} GB\n"
+                    "📁 {}  |  🗓 DB: {}").format(
+                info[2], info[4], gb, info[6], info[3]
+            )
+            lbl.config(text=text, fg=self.AC)
+        else:
+            lbl.config(text=T("t8_no_sel"), fg=self.GY)
 
     def _update_cmp_sel_label(self):
-        """Update the middle hint label showing which scans are selected, with DB info."""
-        a_idx = getattr(self, 'cmp_a_listbox', None)
-        b_idx = getattr(self, 'cmp_b_listbox', None)
-        a_sel = a_idx.curselection() if a_idx else ()
-        b_sel = b_idx.curselection() if b_idx else ()
-        items = getattr(self, '_cmp_scan_items', [])
-
-        # Show info for selected A
-        if a_sel and a_sel[0] < len(items):
-            a_info = items[a_sel[0]]
-            a_text = "A: {} | {:,} files | {}".format(
-                a_info[2], a_info[4], a_info[5] / 1024**3 if a_info[5] else 0
-            )
+        """保持中间对比按钮下方提示（简化版）"""
+        a_lb = getattr(self, 'cmp_a_listbox', None)
+        b_lb = getattr(self, 'cmp_b_listbox', None)
+        a_done = bool(a_lb and a_lb.curselection())
+        b_done = bool(b_lb and b_lb.curselection())
+        if a_done and b_done:
+            text = "✅ {}".format(T("t8_ready"))
         else:
-            a_text = "A: --"
-        
-        # Show info for selected B
-        if b_sel and b_sel[0] < len(items):
-            b_info = items[b_sel[0]]
-            b_text = "B: {} | {:,} files | {}".format(
-                b_info[2], b_info[4], b_info[5] / 1024**3 if b_info[5] else 0
-            )
-        else:
-            b_text = "B: --"
-        
+            text = T("t8_pick")
         if hasattr(self, 'cmp_sel_lbl'):
-            self.cmp_sel_lbl.config(text=a_text + "\n" + b_text)
+            self.cmp_sel_lbl.config(text=text)
 
     def _do_compare(self):
         a_lb = getattr(self, 'cmp_a_listbox', None)
