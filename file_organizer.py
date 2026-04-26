@@ -2047,7 +2047,8 @@ class App:
             font=("Microsoft YaHei UI", 9),
             selectbackground=self.YL, selectforeground=self.BG,
             relief="flat", height=7,
-            yscrollcommand=cmp_a_sb.set
+            yscrollcommand=cmp_a_sb.set,
+            exportselection=False
         )
         self.cmp_a_listbox.pack(side="left", fill="both", expand=True)
         cmp_a_sb.config(command=self.cmp_a_listbox.yview)
@@ -2099,7 +2100,8 @@ class App:
             font=("Microsoft YaHei UI", 9),
             selectbackground=self.AC, selectforeground=self.BG,
             relief="flat", height=7,
-            yscrollcommand=cmp_b_sb.set
+            yscrollcommand=cmp_b_sb.set,
+            exportselection=False
         )
         self.cmp_b_listbox.pack(side="left", fill="both", expand=True)
         cmp_b_sb.config(command=self.cmp_b_listbox.yview)
@@ -2302,6 +2304,7 @@ class App:
             lbl.config(text=text, fg=self.YL)
         else:
             lbl.config(text=T("t8_no_sel"), fg=self.GY)
+        self._update_cmp_sel_label()
 
     def _on_cmp_b_select(self):
         """右侧列表选中：在列表下方显示选中的数据库信息"""
@@ -2326,6 +2329,7 @@ class App:
             lbl.config(text=text, fg=self.AC)
         else:
             lbl.config(text=T("t8_no_sel"), fg=self.GY)
+        self._update_cmp_sel_label()
 
     def _update_cmp_sel_label(self):
         """保持中间对比按钮下方提示（简化版）"""
@@ -2354,8 +2358,10 @@ class App:
         if a_idx >= len(items) or b_idx >= len(items):
             messagebox.showerror(T("dlg_err"), "Index out of range")
             return
-        a_label, a_snap = items[a_idx]
-        b_label, b_snap = items[b_idx]
+        a_info = items[a_idx]
+        b_info = items[b_idx]
+        a_label, a_snap = a_info[0], a_info[1]
+        b_label, b_snap = b_info[0], b_info[1]
         if a_label == b_label:
             messagebox.showwarning(T("dlg_tip"), T("t8_need_two"))
             return
