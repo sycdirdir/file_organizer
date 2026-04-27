@@ -1,6 +1,6 @@
 ﻿# -*- coding: utf-8 -*-
-"""File Organizer Pro v2.2 - i18n: 中文 / EN / FR
-Updated: Tab 8 independent selection details display (A/B left/right)
+"""File Organizer Pro v2.5 - i18n: 中文 / EN / FR
+Updated: Tab 8 now tracks folder changes (new/deleted folders) in addition to files
 """
 import os, sys, sqlite3, threading, time, math, socket, hashlib
 import tkinter as tk
@@ -12,7 +12,7 @@ from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 plt.rcParams['font.sans-serif'] = ['Microsoft YaHei UI', 'SimHei', 'Arial']
 plt.rcParams['axes.unicode_minus'] = False
 
-VER = "2.2"
+VER = "2.5"
 
 def _get_app_dir():
     """Return the directory where the executable or script resides.
@@ -193,6 +193,8 @@ _LANG["zh"] = {
     "t8_ready": "可以对比",
     "t8_pick": "请左右各选一条记录",
     "t8_same_db": "左右选中了相同的数据文件，请重新选择。",
+    "t8_new_dir": "新增文件夹",
+    "t8_del_dir": "删除文件夹",
 
     # Tab 3 趋势表头
     "t3_col_month": "月份", "t3_col_files": "文件数", "t3_col_size": "大小(GB)", "t3_col_bar": "趋势图",
@@ -303,6 +305,8 @@ _LANG["en"] = {
     "t8_ready": "Ready to compare",
     "t8_pick": "Pick one on each side",
     "t8_same_db": "Same data file selected on both sides. Please pick different snapshots.",
+    "t8_new_dir": "New Folder",
+    "t8_del_dir": "Deleted Folder",
 
     # Tab 3 Trends columns
     "t3_col_month": "Month", "t3_col_files": "Files", "t3_col_size": "Size(GB)", "t3_col_bar": "Bar Chart",
@@ -410,6 +414,8 @@ _LANG["fr"] = {
     "t8_ready": "Pret a comparer",
     "t8_pick": "Choisissez un de chaque cote",
     "t8_same_db": "Même fichier de données sélectionné des deux côtés. Veuillez choisir des instantanés différents.",
+    "t8_new_dir": "Nouveau dossier",
+    "t8_del_dir": "Dossier supprimé",
 
     # Tab 3 Tendances colonnes
     "t3_col_month": "Mois", "t3_col_files": "Fichiers", "t3_col_size": "Taille(Go)", "t3_col_bar": "Graphique",
@@ -2397,37 +2403,53 @@ class App:
 
         change_color_map = {
             T("t8_new"): "#a6e3a1",
+            T("t8_new_dir"): "#94e2d5",  # Teal for new folders
             T("t8_removed"): self.RD,
+            T("t8_del_dir"): "#f5c2e7",   # Pink for deleted folders
             T("t8_changed"): self.YL,
             T("t8_same_size"): self.GY,
         }
 
+        added_dirs = 0
+        deleted_dirs = 0
+
         for row in result:
-            kind, name, path, size_b = row
+            kind, name, path, size_b, is_dir = row
             color = change_color_map.get(kind, self.FG)
+            # Show folder indicator in name
+            display_name = "[📁] " + name if is_dir else name
             self.cmp_tree.insert("", "end", values=(
-                kind, name, path[:120], "{:.2f}".format(size_b / 1024**2)
+                kind, display_name, path[:120], "{:.2f}".format(size_b / 1024**2) if not is_dir else "-"
             ), tags=(color,))
             if kind == T("t8_new"):
                 added_sz += size_b
+            elif kind == T("t8_new_dir"):
+                added_dirs += 1
             elif kind == T("t8_removed"):
                 deleted_sz += size_b
+            elif kind == T("t8_del_dir"):
+                deleted_dirs += 1
             elif kind == T("t8_changed"):
                 modified_sz += size_b
             else:
                 same_cnt += 1
 
         self.cmp_tree.tag_configure("#a6e3a1", foreground="#a6e3a1")
+        self.cmp_tree.tag_configure("#94e2d5", foreground="#94e2d5")
         self.cmp_tree.tag_configure(self.RD, foreground=self.RD)
+        self.cmp_tree.tag_configure("#f5c2e7", foreground="#f5c2e7")
         self.cmp_tree.tag_configure(self.YL, foreground=self.YL)
         self.cmp_tree.tag_configure(self.GY, foreground=self.GY)
 
+        # Update stats with folder counts
         self.cmp_added_lbl.config(
-            text=T("t8_added") + ": {} ({:.1f} MB)".format(
-                sum(1 for r in result if r[0] == T("t8_new")), added_sz / 1024**2))
+            text=T("t8_added") + ": {} ({:.1f} MB) | {} {}".format(
+                sum(1 for r in result if r[0] == T("t8_new")), added_sz / 1024**2,
+                added_dirs, T("t8_new_dir")))
         self.cmp_deleted_lbl.config(
-            text=T("t8_deleted") + ": {} ({:.1f} MB)".format(
-                sum(1 for r in result if r[0] == T("t8_removed")), deleted_sz / 1024**2))
+            text=T("t8_deleted") + ": {} ({:.1f} MB) | {} {}".format(
+                sum(1 for r in result if r[0] == T("t8_removed")), deleted_sz / 1024**2,
+                deleted_dirs, T("t8_del_dir")))
         self.cmp_modified_lbl.config(
             text=T("t8_modified") + ": {}".format(
                 sum(1 for r in result if r[0] == T("t8_changed"))))
@@ -2435,48 +2457,58 @@ class App:
             text=T("t8_same") + ": {}".format(same_cnt))
 
     def _compare_two_snapshots(self, old_db, new_db):
-        """Compare two snapshot DBs and return list of (change_type, name, path, size)."""
+        """Compare two snapshot DBs and return list of (change_type, name, path, size, is_dir)."""
         old_cu = old_db.conn.cursor()
         new_cu = new_db.conn.cursor()
 
-        # Load old files: path -> (name, size, mtime, hash)
-        old_files = {}
+        # Load old entries: path -> (name, size, mtime, hash, is_dir)
+        old_entries = {}
         old_cu.execute(
-            "SELECT name, path, size_bytes, mtime, content_hash FROM dir_entries WHERE is_dir=0"
+            "SELECT name, path, size_bytes, mtime, content_hash, is_dir FROM dir_entries"
         )
-        for name, path, size, mtime, hsh in old_cu.fetchall():
-            old_files[path] = (name, size, mtime, hsh)
+        for name, path, size, mtime, hsh, is_dir in old_cu.fetchall():
+            old_entries[path] = (name, size, mtime, hsh, is_dir)
 
-        # Load new files: path -> (name, size, mtime, hash)
-        new_files = {}
+        # Load new entries: path -> (name, size, mtime, hash, is_dir)
+        new_entries = {}
         new_cu.execute(
-            "SELECT name, path, size_bytes, mtime, content_hash FROM dir_entries WHERE is_dir=0"
+            "SELECT name, path, size_bytes, mtime, content_hash, is_dir FROM dir_entries"
         )
-        for name, path, size, mtime, hsh in new_cu.fetchall():
-            new_files[path] = (name, size, mtime, hsh)
+        for name, path, size, mtime, hsh, is_dir in new_cu.fetchall():
+            new_entries[path] = (name, size, mtime, hsh, is_dir)
 
         result = []
 
         # Find new and modified
-        for path, (name, size, mtime, hsh) in new_files.items():
-            if path not in old_files:
-                result.append((T("t8_new"), name, path, size))
+        for path, (name, size, mtime, hsh, is_dir) in new_entries.items():
+            if path not in old_entries:
+                # New entry (file or folder)
+                if is_dir:
+                    result.append((T("t8_new_dir"), name, path, size, True))
+                else:
+                    result.append((T("t8_new"), name, path, size, False))
             else:
-                old_name, old_size, old_mtime, old_hsh = old_files[path]
-                changed = False
-                # Size changed
-                if old_size != size:
-                    changed = True
-                # Content hash changed (if available)
-                elif old_hsh and hsh and old_hsh != hsh:
-                    changed = True
-                if changed:
-                    result.append((T("t8_changed"), name, path, size))
+                old_name, old_size, old_mtime, old_hsh, old_is_dir = old_entries[path]
+                # Only check for changes on files (folders don't have content changes)
+                if not is_dir:
+                    changed = False
+                    # Size changed
+                    if old_size != size:
+                        changed = True
+                    # Content hash changed (if available)
+                    elif old_hsh and hsh and old_hsh != hsh:
+                        changed = True
+                    if changed:
+                        result.append((T("t8_changed"), name, path, size, False))
 
         # Find deleted
-        for path, (name, size, mtime, hsh) in old_files.items():
-            if path not in new_files:
-                result.append((T("t8_removed"), name, path, size))
+        for path, (name, size, mtime, hsh, is_dir) in old_entries.items():
+            if path not in new_entries:
+                # Deleted entry (file or folder)
+                if is_dir:
+                    result.append((T("t8_del_dir"), name, path, size, True))
+                else:
+                    result.append((T("t8_removed"), name, path, size, False))
 
         return result
 
